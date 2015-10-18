@@ -37,6 +37,10 @@
 struct lge_mdss_dsi_interface lge_mdss_dsi;
 #endif
 
+#ifdef CONFIG_STATE_NOTIFIER
+#include <linux/state_notifier.h>
+#endif
+
 #if IS_ENABLED(CONFIG_LGE_DISPLAY_EXTENDED_PANEL)
 extern int lge_lg4945_panel_mode_cmd_send(int mode);
 #endif
@@ -1541,6 +1545,11 @@ static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 		if (ctrl_pdata->on_cmds.link_state == DSI_HS_MODE)
 			rc = mdss_dsi_unblank(pdata);
 		pdata->panel_info.esd_rdy = true;
+                lcd_notifier_call_chain(LCD_EVENT_ON_END, NULL);
+#ifdef CONFIG_STATE_NOTIFIER
+		if (!use_fb_notifier)
+			state_resume();
+#endif
 		break;
 	case MDSS_EVENT_BLANK:
 #if IS_ENABLED(CONFIG_LGE_DISPLAY_POWER_SEQUENCE)
@@ -1561,6 +1570,10 @@ static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 #if IS_ENABLED(CONFIG_LGE_DISPLAY_POWER_SEQUENCE)
 		if (lge_mdss_dsi.lge_mdss_dsi_event_handler)
 			lge_mdss_dsi.lge_mdss_dsi_event_handler(pdata, event, arg);
+#endif
+#ifdef CONFIG_STATE_NOTIFIER
+		if (!use_fb_notifier)
+			state_suspend();
 #endif
 		break;
 	case MDSS_EVENT_CONT_SPLASH_FINISH:

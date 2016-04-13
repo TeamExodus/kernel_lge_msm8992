@@ -68,6 +68,9 @@ EXPORT_SYMBOL(processor_id);
 unsigned long elf_hwcap __read_mostly;
 EXPORT_SYMBOL_GPL(elf_hwcap);
 
+unsigned int system_rev;
+EXPORT_SYMBOL(system_rev);
+
 unsigned int boot_reason;
 EXPORT_SYMBOL(boot_reason);
 
@@ -553,6 +556,7 @@ static int c_show(struct seq_file *m, void *v)
 		seq_printf(m, "vfpv4 idiva idivt ");
 	}
 #endif
+	seq_printf(m, "Revision\t: %04x\n", system_rev);
 
 	return 0;
 }

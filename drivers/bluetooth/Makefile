@@ -21,6 +21,11 @@ obj-$(CONFIG_BT_MRVL_SDIO)	+= btmrvl_sdio.o
 obj-$(CONFIG_BT_WILINK)		+= btwilink.o
 obj-$(CONFIG_MSM_BT_POWER)	+= bluetooth-power.o
 
+obj-$(CONFIG_BT_MSM_SLEEP)  += msm_bt_sleep.o
+msm_bt_sleep-objs           := bluesleep.o
+
+obj-$(CONFIG_LGE_BLUETOOTH_PM)	+= bluetooth-pm.o
+
 btmrvl-y			:= btmrvl_main.o
 btmrvl-$(CONFIG_DEBUG_FS)	+= btmrvl_debugfs.o
 
@@ -33,6 +38,6 @@ hci_uart-$(CONFIG_BT_HCIUART_3WIRE)	+= hci_h5.o
 hci_uart-$(CONFIG_BT_HCIUART_IBS)	+= hci_ibs.o
 hci_uart-objs				:= $(hci_uart-y)
 
+#BT_S : [CONBT-2025] LGC_BT_COMMON_IMP_MOS_V4L2
 obj-y += broadcom/
-obj-$(CONFIG_BT_MSM_SLEEP)  += msm_bt_sleep.o
-msm_bt_sleep-objs           := bluesleep.o
+#BT_E : [CONBT-2025] LGC_BT_COMMON_IMP_MOS_V4L2

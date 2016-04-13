@@ -35,8 +35,12 @@
 #define IPA_Q6_SERVICE_SVC_ID 0x31
 #define IPA_Q6_SERVICE_INS_ID 2
 
-#define QMI_SEND_STATS_REQ_TIMEOUT_MS 5000
 #define QMI_SEND_REQ_TIMEOUT_MS 60000
+
+/* 2015-03-10, LGE, secheol.pyo@lge.com,
+ * fixed modem crash which occured due to ipa_qmi_ctx kzalloc failure under oom.
+ */
+#define LGE_FIXED_MODEM_CRASH_BY_OOM
 
 static struct qmi_handle *ipa_svc_handle;
 static void ipa_a5_svc_recv_msg(struct work_struct *work);
@@ -47,10 +51,14 @@ static struct workqueue_struct *ipa_clnt_resp_workqueue;
 static void *curr_conn;
 static bool qmi_modem_init_fin, qmi_indication_fin;
 static struct work_struct ipa_qmi_service_init_work;
+static bool is_load_uc;
 static uint32_t ipa_wan_platform;
 struct ipa_qmi_context *ipa_qmi_ctx;
 static bool workqueues_stopped;
-static bool first_time_handshake;
+
+#ifdef LGE_FIXED_MODEM_CRASH_BY_OOM
+struct ipa_qmi_context s_ipa_qmi_ctx;
+#endif
 
 /* QMI A5 service */
 
@@ -428,7 +436,7 @@ static int qmi_init_modem_send_sync_msg(void)
 	req.hdr_proc_ctx_tbl_info.modem_offset_end =
 		IPA_MEM_PART(modem_hdr_proc_ctx_ofst) +
 		IPA_MEM_PART(modem_hdr_proc_ctx_size) + smem_restr_bytes - 1;
-	if (!ipa_uc_loaded_check()) {  /* First time boot */
+	if (is_load_uc) {  /* First time boot */
 		req.is_ssr_bootup_valid = false;
 		req.is_ssr_bootup = 0;
 	} else {  /* After SSR boot */
@@ -770,11 +778,9 @@ static void ipa_q6_clnt_svc_arrive(struct work_struct *work)
 		return;
 	}
 	qmi_modem_init_fin = true;
-
-	/* In cold-bootup, first_time_handshake = false */
-	ipa_q6_handshake_complete(first_time_handshake);
-	first_time_handshake = true;
-
+	ipa_proxy_clk_unvote();
+	/* is_load_uc=FALSE indicates that SSR has occured */
+	ipa_q6_handshake_complete(!is_load_uc);
 	IPAWANDBG("complete, qmi_modem_init_fin : %d\n",
 		qmi_modem_init_fin);
 
@@ -840,7 +846,12 @@ static void ipa_qmi_service_init_worker(struct work_struct *work)
 	IPAWANDBG("IPA A7 QMI init OK :>>>>\n");
 
 	/* start the QMI msg cache */
+#ifdef LGE_FIXED_MODEM_CRASH_BY_OOM
+	memset(&s_ipa_qmi_ctx, 0, sizeof(struct ipa_qmi_context));
+	ipa_qmi_ctx = &s_ipa_qmi_ctx;
+#else /* Qualcomm Original */
 	ipa_qmi_ctx = vzalloc(sizeof(*ipa_qmi_ctx));
+#endif
 	if (!ipa_qmi_ctx) {
 		IPAWANERR(":vzalloc err.\n");
 		return;
@@ -849,8 +860,12 @@ static void ipa_qmi_service_init_worker(struct work_struct *work)
 	ipa_svc_workqueue = create_singlethread_workqueue("ipa_A7_svc");
 	if (!ipa_svc_workqueue) {
 		IPAWANERR("Creating ipa_A7_svc workqueue failed\n");
+#ifdef LGE_FIXED_MODEM_CRASH_BY_OOM
+               ipa_qmi_ctx = NULL;
+#else /* Qualcomm Original */
 		vfree(ipa_qmi_ctx);
 		ipa_qmi_ctx = NULL;
+#endif
 		return;
 	}
 
@@ -914,14 +929,19 @@ destroy_qmi_handle:
 destroy_ipa_A7_svc_wq:
 	destroy_workqueue(ipa_svc_workqueue);
 	ipa_svc_workqueue = NULL;
+#ifdef LGE_FIXED_MODEM_CRASH_BY_OOM
+       ipa_qmi_ctx = NULL;
+#else /* Qualcomm Original */
 	vfree(ipa_qmi_ctx);
 	ipa_qmi_ctx = NULL;
+#endif
 	return;
 }
 
-int ipa_qmi_service_init(uint32_t wan_platform_type)
+int ipa_qmi_service_init(bool load_uc, uint32_t wan_platform_type)
 {
 	ipa_wan_platform = wan_platform_type;
+	is_load_uc = load_uc;
 	qmi_modem_init_fin = false;
 	qmi_indication_fin = false;
 	workqueues_stopped = false;
@@ -984,10 +1004,17 @@ void ipa_qmi_service_exit(void)
 	}
 
 	/* clean the QMI msg cache */
+#ifdef LGE_FIXED_MODEM_CRASH_BY_OOM
+	if (ipa_qmi_ctx != NULL) {
+		ipa_qmi_ctx = NULL;
+	}
+#else /* Qualcomm Original */
 	if (ipa_qmi_ctx != NULL) {
 		vfree(ipa_qmi_ctx);
 		ipa_qmi_ctx = NULL;
 	}
+#endif
+
 	ipa_svc_handle = 0;
 	qmi_modem_init_fin = false;
 	qmi_indication_fin = false;
@@ -1027,7 +1054,7 @@ int ipa_qmi_get_data_stats(struct ipa_get_data_stats_req_msg_v01 *req,
 			sizeof(struct ipa_get_data_stats_req_msg_v01),
 			&resp_desc, resp,
 			sizeof(struct ipa_get_data_stats_resp_msg_v01),
-			QMI_SEND_STATS_REQ_TIMEOUT_MS);
+			0);
 
 	IPAWANDBG("QMI_IPA_GET_DATA_STATS_RESP_V01 received\n");
 
@@ -1056,7 +1083,7 @@ int ipa_qmi_get_network_stats(struct ipa_get_apn_data_stats_req_msg_v01 *req,
 			sizeof(struct ipa_get_apn_data_stats_req_msg_v01),
 			&resp_desc, resp,
 			sizeof(struct ipa_get_apn_data_stats_resp_msg_v01),
-			QMI_SEND_STATS_REQ_TIMEOUT_MS);
+			0);
 
 	IPAWANDBG("QMI_IPA_GET_APN_DATA_STATS_RESP_V01 received\n");
 
@@ -1086,8 +1113,7 @@ int ipa_qmi_set_data_quota(struct ipa_set_data_usage_quota_req_msg_v01 *req)
 
 	rc = qmi_send_req_wait(ipa_q6_clnt, &req_desc, req,
 			sizeof(struct ipa_set_data_usage_quota_req_msg_v01),
-			&resp_desc, &resp, sizeof(resp),
-			QMI_SEND_STATS_REQ_TIMEOUT_MS);
+			&resp_desc, &resp, sizeof(resp), 0);
 
 	IPAWANDBG("QMI_IPA_SET_DATA_USAGE_QUOTA_RESP_V01 received\n");
 
@@ -1119,8 +1145,7 @@ int ipa_qmi_stop_data_qouta(void)
 	IPAWANDBG("Sending QMI_IPA_STOP_DATA_USAGE_QUOTA_REQ_V01\n");
 
 	rc = qmi_send_req_wait(ipa_q6_clnt, &req_desc, &req, sizeof(req),
-		&resp_desc, &resp, sizeof(resp),
-		QMI_SEND_STATS_REQ_TIMEOUT_MS);
+		&resp_desc, &resp, sizeof(resp), 0);
 
 	IPAWANDBG("QMI_IPA_STOP_DATA_USAGE_QUOTA_RESP_V01 received\n");
 

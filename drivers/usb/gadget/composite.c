@@ -21,6 +21,10 @@
 #include <linux/usb/composite.h>
 #include <asm/unaligned.h>
 
+#ifdef CONFIG_LGE_USB_G_MULTIPLE_CONFIGURATION
+#include "u_lgeusb.h"
+#endif
+
 /*
  * The code in this file is utility code, used to build a gadget driver
  * from one or more "function" drivers, one or more "configuration"
@@ -448,6 +452,10 @@ static int config_buf(struct usb_configuration *config,
 	/* add each function's descriptors */
 	list_for_each_entry(f, &config->functions, list) {
 		struct usb_descriptor_header **descriptors;
+#ifdef CONFIG_LGE_USB_G_MULTIPLE_CONFIGURATION
+		if (f->desc_change)
+			f->desc_change(f, lgeusb_get_host_os());
+#endif
 
 		switch (speed) {
 		case USB_SPEED_SUPER:
@@ -731,12 +739,6 @@ static int set_config(struct usb_composite_dev *cdev,
 		 */
 		switch (gadget->speed) {
 		case USB_SPEED_SUPER:
-			if (!f->ss_descriptors) {
-				pr_err("%s(): No SS desc for function:%s\n",
-							__func__, f->name);
-				usb_gadget_set_state(gadget, USB_STATE_ADDRESS);
-				return -EINVAL;
-			}
 			descriptors = f->ss_descriptors;
 			break;
 		case USB_SPEED_HIGH:
@@ -1394,6 +1396,9 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 						USB_DT_OTG);
 			break;
 		case USB_DT_STRING:
+#ifdef CONFIG_LGE_USB_G_MULTIPLE_CONFIGURATION
+			lgeusb_set_host_os(w_length);
+#endif
 			value = get_string(cdev, req->buf,
 					w_index, w_value & 0xff);
 			if (value >= 0)
@@ -1622,6 +1627,9 @@ void composite_disconnect(struct usb_gadget *gadget)
 	struct usb_composite_dev	*cdev = get_gadget_data(gadget);
 	unsigned long			flags;
 
+#ifdef CONFIG_LGE_USB_G_MULTIPLE_CONFIGURATION
+	lgeusb_set_host_os(WIN_LINUX_TYPE);
+#endif
 	/* REVISIT:  should we have config and device level
 	 * disconnect callbacks?
 	 */
@@ -1850,7 +1858,9 @@ composite_suspend(struct usb_gadget *gadget)
 
 	cdev->suspended = 1;
 
+#ifndef CONFIG_LGE_PM
 	usb_gadget_vbus_draw(gadget, 2);
+#endif
 }
 
 static void

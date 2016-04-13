@@ -27,6 +27,9 @@
 #include "mdss_mdp_trace.h"
 #include "mdss_debug.h"
 
+static inline u32 get_panel_width(struct mdss_mdp_ctl *ctl);
+static inline int mdss_panel_get_htotal_ctl(struct mdss_mdp_ctl *ctl, bool consider_fbc);
+
 static inline u64 fudge_factor(u64 val, u32 numer, u32 denom)
 {
 	u64 result = (val * (u64)numer);
@@ -1971,6 +1974,25 @@ static int mdss_mdp_ctl_fbc_enable(int enable,
 	return 0;
 }
 
+static inline int mdss_panel_get_htotal_ctl(struct mdss_mdp_ctl *ctl, bool
+	consider_fbc)
+{
+	int adj_xres;
+	struct mdss_panel_info *pinfo = &ctl->panel_data->panel_info;
+
+	adj_xres = get_panel_xres(&ctl->panel_data->panel_info);
+	if (ctl->panel_data->next && is_pingpong_split(ctl->mfd))
+		adj_xres += get_panel_xres(&ctl->panel_data->next->panel_info);
+
+	if (consider_fbc && pinfo->fbc.enabled)
+		adj_xres = mult_frac(adj_xres,
+	pinfo->fbc.target_bpp, pinfo->bpp);
+
+	return adj_xres + pinfo->lcdc.h_back_porch +
+		pinfo->lcdc.h_front_porch +
+		pinfo->lcdc.h_pulse_width;
+}
+
 void mdss_mdp_get_interface_type(struct mdss_mdp_ctl *ctl, int *intf_type,
 		int *split_needed)
 {
@@ -2517,6 +2539,16 @@ int mdss_mdp_ctl_intf_event(struct mdss_mdp_ctl *ctl, int event, void *arg)
 	do {
 		if (pdata->event_handler)
 			rc = pdata->event_handler(pdata, event, arg);
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_EXTENDED_PANEL)
+		if(pdata->next){
+			pdata->next->panel_info.lge_pan_info.lge_panel_send_on_cmd =
+				pdata->panel_info.lge_pan_info.lge_panel_send_on_cmd;
+			pdata->next->panel_info.lge_pan_info.lge_panel_send_off_cmd =
+				pdata->panel_info.lge_pan_info.lge_panel_send_off_cmd;
+			pdata->next->panel_info.lge_pan_info.cur_panel_mode =
+				pdata->panel_info.lge_pan_info.cur_panel_mode;
+		}
+#endif
 		pdata = pdata->next;
 	} while (rc == 0 && pdata && pdata->active);
 
@@ -2617,6 +2649,11 @@ static int mdss_mdp_ctl_start_sub(struct mdss_mdp_ctl *ctl, bool handoff)
 
 	writel_relaxed(temp, ctl->mdata->mdp_base +
 		MDSS_MDP_REG_DISP_INTF_SEL);
+
+#if defined(CONFIG_LGE_TE_SEL)
+	writel_relaxed(0x2002000, ctl->mdata->mdp_base +
+		MDSS_MDP_REG_VSYNC_SEL); // mdp_vsync_e
+#endif
 
 	outsize = (mixer->height << 16) | mixer->width;
 	mdp_mixer_write(mixer, MDSS_MDP_REG_LM_OUT_SIZE, outsize);
@@ -2761,6 +2798,8 @@ int mdss_mdp_ctl_stop(struct mdss_mdp_ctl *ctl, int power_state)
 		off = __mdss_mdp_ctl_get_mixer_off(ctl->mixer_right);
 		mdss_mdp_ctl_write(ctl, off, 0);
 	}
+
+	ctl->power_state = power_state;
 
 	ctl->play_cnt = 0;
 

@@ -261,5 +261,8 @@ config MSM_BT_POWER
 	help
 	  Provides a parameter to switch on/off power from PMIC
 	  to Bluetooth device.
+#BT_S : [CONBT-2025] LGC_BT_COMMON_IMP_MOS_V4L2
+source drivers/bluetooth/broadcom/Kconfig
+#BT_E : [CONBT-2025] LGC_BT_COMMON_IMP_MOS_V4L2
 
 endmenu

@@ -479,7 +479,7 @@ static void get_proxy(struct work_struct *work)
 
 
 				if ((offset < 11) && (offset > (-21))) {
-					if ((shiftModuleId == 0x01) || (shiftModuleId == 0x02)) {
+					if ((shiftModuleId == 0x01) || (shiftModuleId == 0x02) || (shiftModuleId == 0x14)) {
 						proxy_i2c_e2p_read(IT_EEP_REG, &finVal, 2);
 						calCount = finVal >> 8;
 
@@ -756,7 +756,7 @@ int32_t msm_init_proxy(void)
 	shiftModuleId = moduleId >> 8;
 	pr_err("KSY module ID : %d\n", shiftModuleId);
 
-	if ((shiftModuleId == 0x01) || (shiftModuleId == 0x02)) {
+	if ((shiftModuleId == 0x01) || (shiftModuleId == 0x02) || (shiftModuleId == 0x14)) {
 		proxy_i2c_e2p_read(IT_EEP_REG, &finVal, 2);
 		offsetByte = 0x00FF & finVal;
 		calCount = (0xFF00 & finVal) >> 8;

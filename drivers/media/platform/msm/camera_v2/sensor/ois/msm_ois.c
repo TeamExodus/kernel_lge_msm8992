@@ -39,6 +39,7 @@ extern void lgit_imx214_ois_init(struct msm_ois_ctrl_t *msm_ois_t);
 #if defined(CONFIG_IMX234)
 extern void lgit_imx234_onsemi_ois_init(struct msm_ois_ctrl_t *msm_ois_t);
 extern void lgit_imx234_rohm_ois_init(struct msm_ois_ctrl_t *msm_ois_t);
+extern void imtech_imx234_onsemi_ois_init(struct msm_ois_ctrl_t *msm_ois_t);
 extern void lc898122a_af_vcm_code(int16_t UsVcmCod);
 #endif
 static struct msm_ois_ctrl_t *local_msm_ois_t;
@@ -240,6 +241,13 @@ static int msm_ois_init(struct msm_ois_ctrl_t *o_ctrl)
 #endif
 	case 0x03:
 		printk("%s : FujiFilm OIS module!\n", __func__);
+		break;
+	case 0x14:
+	case 0x15:
+	case 0x16:
+		imtech_imx234_onsemi_ois_init(o_ctrl);
+		local_msm_ois_t->sid_ois = o_ctrl->sid_ois;
+		printk("%s : imtech onsemi i2c shift addr 0x%x!\n", __func__, o_ctrl->sid_ois);
 		break;
 	default:
 		printk("%s : unknown module! maker id = %d\n", __func__, chipid);
